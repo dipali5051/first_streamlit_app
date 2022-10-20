@@ -72,14 +72,6 @@ def get_fruit_load_list():
     
     
 
-
-
- = 
-
-
-
-
-
 fruit_choice = streamlit.text_input('What fruit would you like to add?','jackfruit')
 streamlit.write('thanks for adding ', fruit_choice)
 
