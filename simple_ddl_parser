@@ -1,0 +1,65 @@
+import simple_ddl_parser
+from re import sub
+from simple_ddl_generator import DDLGenerator
+from pprint import pprint
+from os.path import abspath, join, dirname
+
+# input file
+file = abspath(join(dirname(__file__), 'demo.txt'))
+file_open = open(file, 'r')
+file_read = file_open.read()
+file_open.close()
+
+# output file
+new_file = abspath(join(dirname(__file__), 'result.txt'))
+new_file_open = open(new_file, 'w')
+
+#dictionary
+mapping_dict={
+    'json': 'VARIANT',
+    'text':'varchar',
+    'uuid':'varchar',
+    'inet':'varchar',
+
+    'integer[]': 'array',
+    'text[]':'array',
+    'character varying[]':'array',
+
+    'public . geometry':'varchar',
+    'public . hstore':'varchar',
+
+    'time without time zone':'timestampntz,',
+}
+
+size_dict={
+    'array':'None',
+}
+
+
+# parse ddl to json-------------->
+output = simple_ddl_parser.DDLParser(file_read).run(group_by_type=True,output_mode="sql")
+pprint(output)
+
+# replacing datatypes------------>
+tables_list = output['tables']
+for table in tables_list:
+    columns_list = table['columns']
+    for column in columns_list:
+        if column['type'] in mapping_dict.keys():
+            column['type'] = mapping_dict.get(column['type'])
+        if column['type'] in size_dict.keys():
+            column['size'] = size_dict.get(column['size'])
+
+
+print("\n after changes")
+pprint(output)
+
+# #generating DDL
+g = DDLGenerator(output)
+g.generate()
+print(g.result)
+ddl_output = g.result
+
+# writing into the file
+new_file_open.write(ddl_output)
+new_file_open.close()
