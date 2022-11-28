@@ -1,0 +1,84 @@
+from re import sub
+from os.path import abspath, join, dirname
+
+# input file
+file = abspath(join(dirname(__file__), 'demo.txt'))
+file_open = open(file, 'r')
+file_read = file_open.read()
+file_open.close()
+
+# output file
+new_file = abspath(join(dirname(__file__), 'result.txt'))
+new_file_open = open(new_file, 'w')
+
+# datatype mapping
+# check : replacer
+dict_replace = {
+
+    'json[\s]+,|json,':'variant,',
+    'json[\s]*\);':'variant);',
+    'json[\s]+':'variant ',
+
+    'character varying[\s]*\([0-9]+\)\[\][\s]+,|character varying[\s]*\([0-9]+\)\[\],':'array,',
+    'character varying[\s]*\([0-9]+\)\[\][\s]*\);':'array);',
+    'character varying[\s]*\([0-9]+\)\[\][\s]+':'array ',
+
+    'integer\[\][\s]+,|integer\[\],':'array,',
+    'integer\[\][\s]*\);':'array);',
+    'integer\[\][\s]+':'array ',
+
+    'text\[\][\s]+,|text\[\],':'array,',
+    'text\[\][\s]*\);':'array);',
+    'text\[\][\s]+':'array ',
+
+    'text[\s]+,|text,':'varchar,',
+    'text[\s]*\);':'varchar);',
+    'text[\s]+':'varchar ',
+
+    'time without time zone[\s]+,|time without time zone,':'timestampntz,',
+    'time without time zone[\s]*\);':'timestampntz);',
+    'time without time zone[\s]+':'timestampntz ',
+
+    'uuid[\s]+,|uuid,':'varchar,',
+    'uuid[\s]*\);':'varchar);',
+    'uuid[\s]+':'varchar ',
+
+    'public.geometry[\s]+,|public.geometry,':'varchar,',
+    'public.geometry[\s]*\);':'varchar);',
+    'public.geometry[\s]+':'varchar ',
+
+    'public.geometry\(Point,4326\)[\s]+,|public.geometry\(Point,4326\),':'varchar,',
+    'public.geometry\(Point,4326\)[\s]*\);':'varchar);',
+    'public.geometry\(Point,4326\)[\s]+':'varchar ',
+
+    'public.geometry\(LineString,4326\)[\s]+,|public.geometry\(LineString,4326\),':'varchar,',
+    'public.geometry\(LineString,4326\)[\s]*\);':'varchar);',
+    'public.geometry\(LineString,4326\)[\s]+':'varchar ',   
+
+    'public.hstore[\s]+,|public.hstore,':'varchar,',
+    'public.hstore[\s]*\);':'varchar);',
+    'public.hstore[\s]+':'varchar ',
+
+    'inet[\s]+,|inet,':'varchar,',
+    'inet[\s]*\);':'varchar);',
+    'inet[\s]+':'varchar ',
+
+}
+
+# function to replace
+def replace_content(dict_replace, target):
+    """Based on dict, replaces key with the value on the target."""
+
+    for check, replacer in list(dict_replace.items()):
+        target = sub(check, replacer, target)
+
+    return target
+
+# calling function
+new_content = replace_content(dict_replace, file_read)
+new_file_open.write(new_content)
+new_file_open.close()
+
+# Test
+print(file_read)
+print(new_content)
