@@ -1,0 +1,119 @@
+import simple_ddl_parser
+from re import sub
+from simple_ddl_generator import DDLGenerator
+from pprint import pprint
+from os.path import abspath, join, dirname
+import time
+
+
+# Place your code into ddl.txt
+# input file
+try:
+    file = abspath(join(dirname(__file__), 'ddl.txt'))
+    file_open = open(file, 'r')
+    file_read = file_open.read()
+    file_open.close()
+except:
+    print("Failed to read!")
+
+
+# output file
+timestr = time.strftime("%d-%m-%Y_%H-%M-%S")
+filename = 'snowflake_ddl_'+timestr+'.txt'
+new_file = abspath(join(dirname(__file__), filename))
+new_file_open = open(new_file, 'w')
+
+
+# dictionary
+mapping_dict={
+    'json': 'variant',
+    'jsonb': 'variant',
+    'json[]': 'variant',
+
+    'text':'varchar',
+    'uuid':'varchar',
+    'inet':'varchar',
+
+    'integer[]': 'array',
+    'text[]':'array',
+    'character varying[]':'array',
+    "'{}' ::character varying[]":"'{}' ::array",
+    "'{}' ::integer[]":"'{}' ::array",
+
+    'public . geometry':'varchar',
+    'public . hstore':'varchar',
+    'public . gen_random_uuid()':'varchar',
+
+    'time without time zone':'timestampntz,',
+    'timestamp with time zone':'timestamptz,',
+    'daterange':'varchar',
+
+}
+
+size_dict={
+    'array':'None',
+}
+
+col_dict={
+    '\n\);|[\s]*\);': """,
+BATCH_ID varchar,
+INSERT_DATE_TIME timestampntz,
+UPDATE_DATE_TIME timestampntz
+);
+    """,
+}
+
+repl_dict={
+    'timestamp with time zone':'timestampnz',
+    'public.hstore':'varchar',
+}
+
+# replacing types which arent recognized by parser
+for check, replacer in list(repl_dict.items()):
+    file_read = sub(check, replacer, file_read)
+
+
+# parse ddl to dict-------------->
+try:
+    output = simple_ddl_parser.DDLParser(file_read).run(group_by_type=True,output_mode="sql")
+    pprint(output)
+except:
+    print("Failed to parse, please try again.")
+
+
+# replacing datatypes------------>
+try:
+    tables_list = output['tables']
+    for table in tables_list:
+        columns_list = table['columns']
+        for column in columns_list:
+            if column['type'] in mapping_dict.keys():
+                column['type'] = mapping_dict.get(column['type'])
+                column['default'] = mapping_dict.get(column['default'])
+            if column['type'] in size_dict.keys():
+                column['size'] = size_dict.get(column['size'])
+            if column['size'] != None:
+                column['size'] = " (" + str(column['size']) + ")"
+except:
+    print("Failed to replace datatypes!")
+
+
+# generating DDL
+g = DDLGenerator(output)
+g.generate()
+#print(g.result)
+ddl_output = g.result
+
+
+# adding new columns
+for check, replacer in list(col_dict.items()):
+    ddl_output = sub(check, replacer, ddl_output)
+
+
+# writing into file
+try:
+    new_file_open.write(ddl_output)
+    print("\nResult generated in "+ filename +"\n")
+    new_file_open.close()
+except:
+    print("\nFailed >> write operation")
