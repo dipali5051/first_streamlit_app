@@ -1,0 +1,77 @@
+from __future__ import print_function
+
+import time
+import math
+import os
+import re
+import yaml
+import boto3 
+import pickle
+import os
+import gspread
+from googleapiclient.discovery import build
+from oauth2client.service_account import ServiceAccountCredentials
+from httplib2 import Http
+from googleapiclient.http import MediaFileUpload
+
+def get_queries_to_run(folder_name):
+    queries = os.listdir('./' +  str(folder_name))
+    queries_filtered = [query for query in queries if (".sql" in query)]
+    return queries_filtered
+
+
+def fix_comment(row):
+    if row['comment'] is not None:
+        comment = re.sub(r'[^\x00-\x7F]+', ' ', row['comment'])
+        if len(comment) > 200:
+            return comment[0:200]
+    else:
+        return row['comment']
+
+
+def generate_dataframe_dicts(dict_list):
+    dataframe_dict = {}
+    for dictionary in dict_list:
+        for key in dictionary:
+            dataframe_dict[key] = dictionary[key]
+    return dataframe_dict
+
+
+
+def get_s3_file(access_key, secret_key, bucket_name, key_name):
+    client = boto3.client( 's3', aws_access_key_id=access_key, aws_secret_access_key=secret_key )
+    client.download_file(bucket_name, key_name, 'analytics-projects-gs-credentials.json')
+
+def get_config():
+    s3_tokens = yaml.safe_load(
+        open(
+            os.path.join(
+                os.getcwd(),
+                'config.yaml')))
+    access_key = s3_tokens['aws_keys']['access_key_id']
+    secret_key = s3_tokens['aws_keys']['secret_access_key']
+    return get_s3_file(access_key, secret_key, 'porter-analytics', 'analytics-configs/analytics-projects-gs-credentials.json')
+
+
+def upload_files(file_name, file_path, drive_folder_id = '1_e7tqZQri9FsfYrNq9oDUf9uYHzfwKsY'):
+    """
+    Creates a folder and upload a file to it
+    """
+    # If modifying these scopes, delete the file token.pickle.
+    SCOPES = ['https://www.googleapis.com/auth/drive.metadata.readonly',
+          'https://www.googleapis.com/auth/drive.file']
+    # authenticate account
+    get_config()
+    credentials = ServiceAccountCredentials.from_json_keyfile_name('analytics-projects-gs-credentials.json', SCOPES)
+    http_auth = credentials.authorize(Http())
+    service = build('drive', 'v3', http=http_auth)
+    # upload a file text file
+    # first, define file metadata, such as the name and the parent folder ID
+    file_metadata = {
+        "name": file_name,
+        "parents": [drive_folder_id]
+    }
+    # upload
+    media = MediaFileUpload(file_path, resumable=True)
+    file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    print("File created, id:", file.get("id"))
