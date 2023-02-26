@@ -1,0 +1,69 @@
+import threading
+import time
+import queue
+from utils import get_queries_to_run, generate_dataframe_dicts
+from db_utils import read_sql_file, fetch_data
+
+
+class generic_thread(threading.Thread):
+    def __init__(self, threadID, name, queue, func, *kwargs):
+        threading.Thread.__init__(self)
+        self.threadID = threadID
+        self.name = name
+        self.queue = queue
+        self.my_args = kwargs
+        self.func = func
+
+    def run(self):
+        print("Starting " + self.name)
+        self.queue.put(self.func(self.name, *self.my_args))
+        print("Exiting " + self.name + "\n")
+
+
+def create_query_thread(threadName, query_name, folder_name, argument_dict={}):
+    print("\nExecuting thread: ", threadName, time.ctime(time.time()))
+    query = read_sql_file(query_name, folder_name, arguments=argument_dict)
+    # for key  in argument_dict:
+    #     argument_dict.get(key)
+    #     return key
+    query_data = fetch_data(query, 'oms_snapshot_db')
+    # query_data = fetch_data(query, argument_dict.get('connection', 'oms_db'))
+    return {query_name: query_data}
+
+
+def run_data_fetcher_threads(argument_dict, folder_name):
+    workQueue = queue.Queue()
+    threads = []
+    queries_to_run = list(argument_dict.keys())
+    for idx, query in enumerate(queries_to_run):
+        threads.append(generic_thread(idx,
+                                      "Thread-{query}".format(query=query),
+                                      workQueue,
+                                      create_query_thread,
+                                      query,
+                                      folder_name,
+                                      argument_dict.get(query,
+                                                        {})))
+    batch_size = 4
+    batches = [threads[i:i + batch_size]
+               for i in range(0, len(threads), batch_size)]
+    dataframe_dicts = []
+    counter = 0
+
+    for batch in batches:
+        for t in batch:
+            t.start()
+
+        for t in batch:
+            t.join()
+
+        while not workQueue.empty():
+            result = workQueue.get()
+            dataframe_dicts.append(result)
+
+    print("finished threading")
+
+    df_dict = generate_dataframe_dicts(dataframe_dicts)
+    # return df_dict
+
+    print(df_dict)
