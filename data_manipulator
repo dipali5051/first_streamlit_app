@@ -1,0 +1,96 @@
+
+import pandas as pd
+import numpy as np
+from datetime import timedelta
+
+
+def premium_partners_manipulations(branding, driver_info, active_branding_configs, subscription, vehicle_info,
+                                    month_start_date, month_last_date):
+    ## Branded partners
+    branding_drivers_info = branding.merge(driver_info, on = 'driver_id', how = 'left')
+    branding_applicable_df = branding_drivers_info.merge(active_branding_configs, on = ['geo_region_id', 'vehicle_type_id'])
+
+    #print(branding_applicable_df)
+
+    ## Subscribed partners
+    subscription['subscribed_days'] = subscription\
+                        .apply(lambda x: pd.date_range(pd.to_datetime(x['start_date']),(pd.to_datetime(x['end_date'])
+                                               +timedelta(seconds=(86400-1)))).tolist(), axis=1)
+    partner_subscription_df = subscription.explode('subscribed_days')
+    partner_subscription_df.rename(columns={'id':'subscription_id','start_date':'subscription_start_date',
+                                            'end_date':'subscription_end_date'},inplace=True)
+
+    days_month = (pd.to_datetime(month_last_date) - pd.to_datetime(month_start_date)).days + 1
+
+    #print(partner_subscription_df)
+
+    ## Collating drivers
+    b_drivers = branding_applicable_df['driver_id'].unique().tolist()
+    s_drivers = subscription['driver_id'].unique().tolist()
+    all_drivers_brand = pd.DataFrame({'driver_id' : b_drivers})
+    all_drivers_subs = pd.DataFrame({'driver_id' : s_drivers})
+    all_drivers = all_drivers_brand.append(all_drivers_subs)
+    all_drivers = all_drivers.drop_duplicates()
+    date_list = pd.date_range(pd.to_datetime(month_start_date), periods=days_month).tolist()
+    date_df = pd.DataFrame({'login_date': date_list})
+    product = (all_drivers.assign(key=1).merge(date_df.assign(key=1), on="key").drop("key", axis=1))
+    date_drivers_base = product.merge(driver_info, on = 'driver_id', how = 'left')
+
+    branding['month_last_date'] = month_last_date
+    branding['subscribed_days'] = branding[['initial_branding_date', 'month_last_date']]\
+                .apply(lambda x: pd.date_range(x['initial_branding_date'],(pd.to_datetime(x['month_last_date'])
+                                               +timedelta(seconds=(86400-1)))).tolist(), axis=1)
+    partner_branding_df = branding.explode('subscribed_days')
+
+    #merge branding and subscription info to all driver date df
+
+    date_drivers_base_subs = date_drivers_base.merge(partner_subscription_df,left_on = ['driver_id','login_date'],
+                                                        right_on = ['driver_id', 'subscribed_days'],how='left'
+                                                        )
+    date_drivers_base_subs['login_date'] = pd.to_datetime(date_drivers_base_subs['login_date']).dt.date
+    partner_branding_df['subscribed_days'] = pd.to_datetime(partner_branding_df['subscribed_days']).dt.date
+    date_drivers_base_subs_branding = date_drivers_base_subs.merge(partner_branding_df, 
+                                            left_on = ['driver_id', 'login_date'], 
+                                            right_on = ['driver_id', 'subscribed_days'], how = 'left', 
+                                            suffixes = ['_subscription', '_branding'])
+    date_drivers_base_subs_branding['final_premium_status'] = (
+                        ((date_drivers_base_subs_branding['subscribed_days_subscription'].notna()) | 
+                        (date_drivers_base_subs_branding['branding_type'].notna())))
+    final_premium_df = date_drivers_base_subs_branding[date_drivers_base_subs_branding['final_premium_status']]
+    final_premium_df['advantage_date'] = final_premium_df.apply(lambda x : x['subscribed_days_branding'] 
+                                                                if pd.isnull(x['subscribed_days_subscription']) 
+                                                                else x['subscribed_days_subscription'], axis=1) 
+    final_premium_df.drop_duplicates(subset = ['driver_id', 'login_date'], inplace = True)
+
+    #print(final_premium_df)
+
+    final_pr_df = final_premium_df.groupby(
+                        ['driver_id', 'geo_region_id', 'final_premium_status'])['login_date', 'advantage_date']\
+                        .agg(premium_active_days = ('login_date', 'count'),
+                        first_premium_day = ('advantage_date', 'min'),
+                        last_premium_day = ('advantage_date', 'max')).reset_index()
+    final_pr_df_branding = final_pr_df.merge(branding, on = 'driver_id', how = 'left')
+    final_pr_df_branding['subscription'] = final_pr_df_branding['driver_id'].isin(subscription['driver_id'])
+    final_pr_df_branding['Premium_type'] = final_pr_df_branding.apply(lambda x: x['branding_type'] 
+                                                    if not (x['subscription'] & pd.isnull(x['branding_type'])) 
+                                                    else 'Subscription', axis = 1)
+    final_pr_df_branding_cleaned = final_pr_df_branding[final_pr_df_branding['Premium_type'].notna()]
+    final_pr_df_branding_cleaned['Activation_date'] = final_pr_df_branding_cleaned\
+                                                    .apply(lambda c : c['initial_branding_date'] 
+                                                           if c['Premium_type'] != 'Subscription' 
+                                                           else c['first_premium_day'], axis =1)
+
+    #print(final_pr_df)
+    #print(final_pr_df_branding_cleaned)
+    #final_pr_df_branding_cleaned_selected_columns =    final_pr_df_branding_cleaned[['driver_id','Activation_date', 
+     #      'premium_active_days', 'first_premium_day', 'last_premium_day',
+      #     'subscription', 'Premium_type', ]]
+
+
+    req_data = final_pr_df_branding_cleaned.merge(vehicle_info, on = ['driver_id','geo_region_id'], how = 'left')
+    req_data2 = req_data[['driver_id', 'Activation_date', 'geo_region_id', 'premium_active_days', 
+                          'first_premium_day', 'last_premium_day','Premium_type','msisdn', 
+                          'vehicle_type', 'vehicle_number']]
+
+    req_data2 = req_data2.sort_values(by = ['driver_id', 'Activation_date']).drop_duplicates(subset = 'driver_id', keep = 'first')
+    return req_data2
