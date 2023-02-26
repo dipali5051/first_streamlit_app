@@ -1,0 +1,62 @@
+
+from email.mime import base
+import pandas as pd
+from sqlalchemy.types import VARCHAR, Integer, DateTime
+from datetime import timedelta, datetime 
+from db_utils import  *     #__get_sqlalchemy_engine
+from data_fetcher import required_data
+from data_manipulator import premium_partners_manipulations
+from output_mailing import send_by_smtp
+import os
+import time
+import warnings
+import snowflake-sqlalchemy
+
+warnings.filterwarnings("ignore")
+dir_name = os.getcwd()
+
+
+
+def order_flagging(run_date):
+    report_month = pd.to_datetime("today").replace(day=1)- timedelta(days=1)
+    # report_month = datetime.today().replace(day=1)- timedelta(days=1)
+    month_start_date = report_month.replace(day=1).strftime("%Y-%m-%d")
+    month_last_date = report_month.strftime('%Y-%m-%d')
+    print(str(month_start_date), str(month_last_date))
+
+    # redshift_engine = __get_sqlalchemy_engine()
+    base_data = required_data(str(month_start_date), str(month_last_date))
+
+    req_data2 = premium_partners_manipulations(base_data['branding.sql'], base_data['driver_info.sql'], base_data['active_branding_configs.sql'], 
+                base_data['subscription.sql'], base_data['vehicle_info.sql'], str(month_start_date), str(month_last_date) )
+    req_data2.to_csv("partners_with_premium_advantage_{report_month}.csv".format(
+        report_month=report_month.strftime("%B-%Y")), index = False)
+    
+ 
+
+if __name__ == "__main__":
+    run_date=pd.to_datetime("today").strftime("%Y-%m-%d")
+    # run_date = datetime.today().strftime("%Y-%m-%d")
+    report_month = pd.to_datetime("today").replace(day=1)- timedelta(days=1)
+    # report_month = datetime.today().replace(day=1)- timedelta(days=1)
+    order_flagging(run_date)
+
+
+    files_to_attach = [
+        os.path.join(
+            dir_name, "partners_with_premium_advantage_{report_month}.csv".format(
+                report_month=report_month.strftime("%B-%Y")))]
+
+    print("Send an email using Python")
+
+
+
+
+    #   commented for testing purpose --->
+
+    # send_by_smtp(
+    #     to = ["mahiteshpoojary@porter.in"],
+    #     cc=["analytics@theporter.in", "arpanbarnwal@porter.in", "choudharyashish@porter.in", "arshdeep.ka@theporter.in"],
+    #     subject="Partners with Subscription and Branding Advantage: {}".format(report_month.strftime("%B-%Y")),
+    #     attachments=files_to_attach, attachment_type="html")
+    # print("Email Sent Successfully")
