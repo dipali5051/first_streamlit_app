@@ -1,0 +1,18 @@
+
+import queue
+import os
+from thread_lightly import run_data_fetcher_threads
+from db_utils import read_sql_file, fetch_data
+
+
+def required_data(month_start_date, month_last_date):
+    argument_dict = {
+        'active_branding_configs.sql': {'connection': 'oms_snapshot_db'},
+        'branding.sql': {'month_start_date': month_start_date, 'connection': 'oms_snapshot_db'},
+        'subscription.sql': {'month_start_date': month_start_date, 'month_last_date': month_last_date, 'connection': 'oms_snapshot_db'},
+        'driver_info.sql': {'connection': 'oms_snapshot_db'},
+        'vehicle_info.sql': {'connection': 'oms_snapshot_db'}
+    }
+    dataframes = run_data_fetcher_threads(
+        argument_dict, 'Premium_Partners/queries/')
+    return dataframes
